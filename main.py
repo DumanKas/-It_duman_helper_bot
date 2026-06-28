@@ -1,4 +1,5 @@
 import asyncio
+import os
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
@@ -10,10 +11,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from middlewares import RoleMiddleware
 from aiogram.types import BotCommand
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from aiohttp import web
 ADMIN_IDS = [834966781]  
 
-BOT_TOKEN = '8777969478:AAEgKpFKfoipBv_f7lMYFL0ASS3AXXMuE7Y'
-
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
+BOT_TOKEN = os.getenv('BOT_TOKEN')
 dp = Dispatcher()
 bot = Bot(token=BOT_TOKEN)
 
@@ -47,8 +50,8 @@ async def services_command(message: Message):
         builder.button(text=f"{service[1]} - {service[3]} тг",
                        callback_data=f"order_{service[0]}")
         
-        builder.adjust(1)
-        await message.answer('📋 Выберите услугу:', reply_markup=builder.as_markup())
+    builder.adjust(1)
+    await message.answer('📋 Выберите услугу:', reply_markup=builder.as_markup())
     
 
 @dp.callback_query(F.data.startswith("order_"))
@@ -175,6 +178,14 @@ async def main():
         BotCommand(command='delete', description='удалить услугу'),
         BotCommand(command='orders', description='посмотреть все заявки')
     ])
+    await bot.set_webhook(f"{WEBHOOK_URL}/webhook")
+    app = web.Application()
+    SimpleRequestHandler(dispatcher = dp, bot = bot).register(app, path='/webhook')
+    setup_application(app, dp, bot = bot)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
+    await site.start()
     await dp.start_polling(bot)
 
 
