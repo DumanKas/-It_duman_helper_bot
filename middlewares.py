@@ -10,9 +10,10 @@ class RoleMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: Dict[str, Any]
     ) -> Any:
+        pool = data.get('pool')
         user = data.get('event_from_user')
-        if user:
-            role = get_role(user.id)
+        if user and pool:
+            role = await get_role(pool, user.id)
             data['role'] = role
             if role == 'banned':
                 if isinstance(event, Message):
