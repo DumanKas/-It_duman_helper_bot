@@ -4,7 +4,7 @@ from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from database import get_all_orders,get_all_users,get_orders,set_role,get_role,get_service,get_services,add_order,add_service,add_user,delete_order,delete_service,create_tables
+from database import get_all_orders,get_all_users,get_orders,set_role,get_role,get_service,get_services,add_order,add_service,add_user,delete_order,create_pool,delete_service,create_tables
 from datetime import datetime
 from filters import admin_only
 from aiogram.fsm.context import FSMContext
@@ -13,13 +13,15 @@ from middlewares import RoleMiddleware
 from aiogram.types import BotCommand
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
+import asyncpg
+
+
 ADMIN_IDS = [834966781]  
 
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 dp = Dispatcher()
 bot = Bot(token=BOT_TOKEN)
-
 
 
 class DeleteService(StatesGroup):
@@ -30,18 +32,18 @@ class Add_Service(StatesGroup):
     price = State()
 
 @dp.message(Command('start'))
-async def start_command(message: Message):
+async def start_command(message: Message,pool: None):
     user_id = message.from_user.id
     username = message.from_user.username
-    add_user(user_id, username)
+    await add_user(pool, user_id, username)
     if user_id in ADMIN_IDS:
-        set_role(user_id, 'admin')
+        await set_role(pool, user_id, 'admin')
 
     await message.answer("Добро пожаловать!")
 
 @dp.message(Command('services'))
-async def services_command(message: Message):
-    services = get_services()
+async def services_command(message: Message,pool: None):
+    services = await get_services(pool)
     if not services:
         await message.answer("📋 Список услуг пуст.")
         return
@@ -55,16 +57,16 @@ async def services_command(message: Message):
     
 
 @dp.callback_query(F.data.startswith("order_"))
-async def order_command(callback: types.CallbackQuery):
+async def order_command(callback: types.CallbackQuery,pool: None):
     service_id = int(callback.data.split("_")[1])
-    service =   get_service(service_id)
+    service =   await get_service(pool, service_id)
     if service is None:
         await callback.answer('❌ Услуга не найдена')
         await callback.answer()
         return
     
     date = datetime.now().strftime("%Y-%m-%d %H:%M")
-    add_order(callback.from_user.id,service_id,date)
+    await add_order(pool,callback.from_user.id,service_id,date)
     await callback.message.answer(f"✅ Заявка на {service[1]} принята!\nМы свяжемся с вами")
     await callback.answer()
 
@@ -82,7 +84,7 @@ async def admin_command(message: Message):
 
 @dp.callback_query(F.data == 'add')
 @admin_only
-async def admin_add(callback: types.CallbackQuery, state:FSMContext):
+async def admin_add(callback: types.CallbackQuery, state:FSMContext,):
     await callback.message.answer("Введите название услуги: ")
     await state.set_state(Add_Service.name)
     await callback.answer()
@@ -103,9 +105,9 @@ async def add_description(message: Message, state:FSMContext):
 
 
 @dp.message(Add_Service.price)
-async def add_price(message: Message, state: FSMContext):
+async def add_price(message: Message, state: FSMContext, pool: None):
     data = await state.get_data()
-    add_service(name = data['name'],
+    await add_service(pool, name = data['name'],
                 description=data['description'],
                 price = int(message.text))
     
@@ -114,8 +116,8 @@ async def add_price(message: Message, state: FSMContext):
 
 @dp.callback_query(F.data == 'delete')
 @admin_only
-async def delete_command(callback: types.CallbackQuery, state: FSMContext):
-    services = get_services()
+async def delete_command(callback: types.CallbackQuery, state: FSMContext,pool: None):
+    services = await get_services(pool)
     if not services:
         await callback.message.answer("Услуг нет")
         await callback.answer()
@@ -131,23 +133,23 @@ async def delete_command(callback: types.CallbackQuery, state: FSMContext):
 
 
 @dp.message(DeleteService.service_id)
-async def confirm_delete(message: Message, state: FSMContext):
+async def confirm_delete(message: Message, state: FSMContext,pool: None):
     service_id = int(message.text) 
-    service = get_service(service_id)
+    service = await get_service(pool, service_id)
 
     if service is None:
         await message.answer("❌ Услуги с таким id нет")
         await state.clear()
         return
-    delete_service(service_id)
+    await delete_service(pool, service_id)
     await message.answer('Услуга удалена')
     await state.clear()
 
 
 @dp.callback_query(F.data == 'orders')
 @admin_only
-async def admin_order_command(callback: types.CallbackQuery):
-    orders = get_all_orders()
+async def admin_order_command(callback: types.CallbackQuery, pool: None):
+    orders = await get_all_orders(pool)
 
     if not orders:
         await callback.message.answer("Заказов нет")
@@ -167,7 +169,11 @@ async def admin_order_command(callback: types.CallbackQuery):
 
 
 async def main():
-    create_tables()
+    pool = await create_pool()
+    dp['pool'] = pool
+    await create_tables(pool)
+
+
     dp.message.middleware(RoleMiddleware())
     dp.callback_query.middleware(RoleMiddleware())
     await bot.set_my_commands([
@@ -186,7 +192,7 @@ async def main():
     await runner.setup()
     site = web.TCPSite(runner, host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
     await site.start()
-    await dp.start_polling(bot)
+
 
 
 if __name__ == '__main__':
