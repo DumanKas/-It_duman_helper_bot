@@ -4,7 +4,7 @@ from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from database import get_all_orders,get_all_users,set_role,get_role,get_service,get_services,add_order,add_service,add_user,delete_order,create_pool,delete_service,create_tables
+from database import get_all_orders,get_all_users,set_role,get_role,get_service,get_services,add_order,add_service,add_user,create_pool,delete_service,create_tables
 from datetime import datetime
 from filters import admin_only
 from aiogram.fsm.context import FSMContext
