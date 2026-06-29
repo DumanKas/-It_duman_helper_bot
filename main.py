@@ -193,7 +193,11 @@ async def main():
     site = web.TCPSite(runner, host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
     await site.start()
 
-
+    try:
+        await asyncio.Event().wait()  # держим бота живым
+    finally:
+        await runner.cleanup()  # закрывает сессии при остановке
+        await bot.session.close()
 
 if __name__ == '__main__':
     asyncio.run(main())
