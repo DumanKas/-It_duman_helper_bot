@@ -37,7 +37,7 @@ async def add_user(pool, user_id: int, username: str):
         await conn.execute('''
             INSERT INTO users(id, username)
             VALUES($1, $2)
-            ON CONFLICT DO NOTHING
+            ON CONFLICT (id) DO UPDATE SET username = $2
         ''', user_id, username)
 
 async def get_role(pool, user_id: int) -> str:
